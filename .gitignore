@@ -1,0 +1,7 @@
+/input
+/.cache
+/output
+/.venv
+__pycache__/
+*.pyc
+*.zip
