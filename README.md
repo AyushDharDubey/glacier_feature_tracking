@@ -7,17 +7,20 @@ Python implementation of the glacier-velocity methodology of
 > imaging system.* Science of Remote Sensing 13, 100431.
 > https://doi.org/10.1016/j.srs.2026.100431
 
-The authors' unfinished MATLAB prototype was analysed during development as a reference
-(it is not part of this repository). Where the MATLAB script and the paper disagree, the
-paper is followed — see "Relation to the MATLAB prototype" below and
-[docs/MATLAB_COMPARISON.md](docs/MATLAB_COMPARISON.md) for the full account.
 
 ## Quick start
 
+Create a virtual environment, install the dependencies
+
 ```bash
-python3 -m venv .venv && . .venv/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-# put the daily JPEGs (with EXIF capture time) in ./input, edit config.yaml if needed
+```
+
+put the daily JPEGs (with EXIF capture time) in ./input, edit config.yaml if needed
+
+```bash
 python -m glacier_tlc all -j 10          # every stage in order
 python -m glacier_tlc track --limit 50   # or run single stages
 ```
