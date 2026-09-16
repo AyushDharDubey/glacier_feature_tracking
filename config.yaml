@@ -1,0 +1,156 @@
+# ---------------------------------------------------------------------------
+# glacier_tlc configuration: Drang Drung Glacier terrestrial time-lapse camera
+# Methodology: Singh, Vijay & Azam (2026) Sci. Remote Sens. 13, 100431
+# ---------------------------------------------------------------------------
+paths:
+  images: input          # daily JPEGs with EXIF capture time
+  cache: .cache             # caches (ROI crops, per-pair vectors) - safe to delete
+  output: output         # tables, figures, report
+
+# Canon EOS 2000D, 24 mm fixed-focus lens (paper Sect. 3.1.1)
+camera:
+  model: Canon EOS 2000D
+  sensor_width_mm: 22.3
+  sensor_height_mm: 14.9
+  image_width_px: 6000
+  image_height_px: 4000
+  focal_length_mm: 24.0
+
+# Camera-to-target distances from the paper (Sect. 3.2.1); override per ROI
+# below if better field measurements exist.  GSD = D * (22.3/6000) / 24 m/px
+distances_m:
+  ROI1: 900     # peripheral clean-ice, lake-terminating zone
+  ROI2: 700     # centreline, lake-terminating sector (near the ablation stake)
+  ROI3: 450     # land-terminating, debris-covered tongue
+  ROI4: 550     # extra ROI present in the authors' MATLAB script (not in paper)
+  stable: 900   # non-moving terrain near the lake margin
+
+inventory:
+  extensions: [.jpg, .jpeg]
+  target_hour: 13.0      # the paper uses the ~13:00 local time image of each day
+  hour_window: 2.0
+
+# The camera position changed at every data retrieval / snow burial, so the
+# record is split into groups that are processed independently. Boundaries
+# were determined from the scene shift of every image relative to reference
+# frames (see output/quality.csv: shift_dx_px, shift_dy_px). ROI rectangles
+# [x, y, w, h] (full-resolution pixels) are those of the authors' MATLAB
+# script for the matching camera position.
+groups:
+  GRP1:
+    start: 2023-10-05      # camera reinstalled 4 Oct 2023 ~13:50 local
+    end: 2024-02-16        # buried under snow from 17 Feb 2024
+    lake_rect: [1000, 2640, 1400, 480]
+    rois:
+      stable: {rect: [681, 3314, 654, 78], role: stable}
+      ROI1: {rect: [4515, 3014, 654, 78]}
+      ROI2: {rect: [3969, 3194, 588, 108]}
+      ROI3: {rect: [3165, 3512, 606, 84]}
+      ROI4: {rect: [3009, 3200, 336, 138]}
+  GRP2:
+    start: 2024-05-16      # scene visible again from 16 May 2024
+    end: 2024-08-18        # data retrieval 19 Aug 2024 moved the camera ~97 px
+    lake_rect: [1780, 2737, 1400, 480]
+    rois:
+      stable: {rect: [1455, 3422, 414, 150], role: stable}
+      ROI1: {rect: [5284, 3160, 493, 101]}
+      ROI2: {rect: [4695, 3368, 642, 113]}
+      ROI3: {rect: [3843, 3642, 778, 115]}
+      ROI4: {rect: [3922, 3297, 403, 151]}
+  GRP3:
+    start: 2024-08-19
+    end: 2025-02-24        # buried under snow from 25 Feb 2025
+    lake_rect: [1780, 2640, 1400, 480]
+    rois:
+      stable: {rect: [1347, 3290, 416, 178], role: stable}
+      ROI1: {rect: [5289, 3065, 499, 124]}
+      ROI2: {rect: [4540, 3338, 576, 136]}
+      ROI3: {rect: [3547, 3540, 570, 130]}
+      ROI4: {rect: [3755, 3195, 338, 172]}
+
+# Automatic image screening (paper: manual exclusion of glare / low light /
+# snowstorm / fog images). Manual lists override: exclude_images.txt,
+# include_images.txt next to the image folder (one file name per line).
+quality:
+  static_fraction: 0.7          # top fraction of the frame used for the visibility check
+  neighbour_images: 2           # also match against +-N neighbouring days
+  thresholds:
+    min_visibility_inliers: 30
+    min_sharpness: 50           # variance of Laplacian on the 1/4-scale image
+    min_contrast: 15
+    min_brightness: 30
+    max_brightness: 235
+    max_clipped_frac: 0.3
+  exclude_list: exclude_images.txt
+  include_list: include_images.txt
+
+# Adaptive histogram equalisation == MATLAB adapthisteq defaults
+enhancement:
+  method: clahe
+  clip_limit_matlab: 0.01
+  n_bins: 256
+  tiles: [8, 8]
+
+tracking:
+  rois: [stable, ROI1, ROI2, ROI3]   # ROIs to track (ROI4 is not used in the paper; remove this line to track all)
+  pad_px: 40                    # margin around each ROI so tracked points can leave the ROI
+  min_vectors: 20               # a pair-ROI with fewer final vectors is invalid
+  sift: {contrast_threshold: 0.04, edge_threshold: 10, n_octave_layers: 3, sigma: 1.6, max_features: 0}
+  klt: {win_size: 31, pyramid_levels: 3, max_iterations: 30, epsilon: 0.01, max_bidirectional_error: 2.0}
+  ransac: {reproj_threshold_px: 2.0, max_trials: 5000, confidence: 0.99, min_points: 6}
+  direction_filter:
+    enabled: true
+    threshold_deg: 30           # keep vectors within +-30 deg of the median flow direction
+    apply_to_stable: false      # camera shake has no preferred direction
+    # optional fixed reference directions (deg, image coords) per group/ROI:
+    # reference_direction: {GRP1: {ROI1: -160}}
+
+pairs:
+  min_baseline_days: 0.5        # guards a same-day pair (division by zero in the MATLAB prototype, D3);
+                                 # harmless in practice since `inventory` already keeps one image per day
+  max_baseline_days: null       # unlimited: full nC2 over each group, matching the MATLAB script and the
+                                 # paper's Fig. 2 (no stated bound). Set a number (e.g. 20) to cap it for a
+                                 # lighter/faster run; cached pairs are always reused regardless.
+
+velocity:
+  min_vectors: 20
+  min_vectors_stable: 20
+  flow_sign_x: auto             # or +1 / -1: sign that makes along-flow motion positive
+  flow_sign_min_days: 7
+
+aggregation:
+  mode: monthly                 # or custom: [{label, start, end}, ...]
+  stat: median                  # median | mean | weighted_mean (weights = baseline^2)
+  min_days: 5                   # pairs shorter than this do not enter the window statistics
+  min_pairs: 20                 # windows with fewer contributing pairs are dropped
+  annual_periods:
+    - {label: Oct2023-Oct2024, start: 2023-10-05, end: 2024-10-04}
+  seasons:
+    - {label: winter-spring_2023-24, start: 2023-12-01, end: 2024-02-29}
+    - {label: summer_2024, start: 2024-06-01, end: 2024-09-30}
+    - {label: Oct-Dec_2023, start: 2023-10-01, end: 2023-12-31}
+    - {label: Oct-Dec_2024, start: 2024-10-01, end: 2024-12-31}
+    - {label: Jan-Feb_2024, start: 2024-01-01, end: 2024-02-29}
+    - {label: Jan-Feb_2025, start: 2025-01-01, end: 2025-02-28}
+  season_comparisons:
+    - {reference: winter-spring_2023-24, target: summer_2024}
+  interannual:
+    - {reference: Oct-Dec_2023, target: Oct-Dec_2024}
+    - {reference: Jan-Feb_2024, target: Jan-Feb_2025}
+
+short_term:
+  quantity: horizontal_m_yr
+  max_baseline_days: 3.0        # short-baseline pairs, assigned to their mid date
+  smoothing_window_days: 5
+  periods:
+    - {label: June2024, start: 2024-06-01, end: 2024-07-01}
+
+auxiliary:
+  # optional CSV with columns date,net_radiation (W m-2) [,temperature_c] for the Fig. 7 overlay
+  era5_daily_csv: null
+
+plots:
+  rois: [ROI1, ROI2, ROI3]
+  vector_overlays:
+    - {label: winter, start: 2023-12-01, end: 2024-01-31, vmax_m_month: 3.5, arrow_scale: 4, max_vectors: 300}
+    - {label: summer, start: 2024-06-20, end: 2024-07-31, vmax_m_month: 3.5, arrow_scale: 4, max_vectors: 300}
