@@ -1,0 +1,128 @@
+# ---------------------------------------------------------------------------
+# glacier_tlc configuration: Drang Drung Glacier terrestrial time-lapse camera
+# Methodology: Singh, Vijay & Azam (2026) Sci. Remote Sens. 13, 100431
+# ---------------------------------------------------------------------------
+paths:
+  images: input # path to daily JPEGs with EXIF capture time
+  cache: .cache # path to store caches (ROI crops, per-pair vectors)
+  output: output # path to store final report
+
+# Canon EOS 2000D, 24 mm fixed-focus lens (paper Sect. 3.1.1)
+camera:
+  model: Canon EOS 2000D
+  sensor_width_mm: 22.3
+  sensor_height_mm: 14.9
+  image_width_px: 6000
+  image_height_px: 4000
+  focal_length_mm: 24.0
+
+# Camera-to-ROI distances from the paper (Sect. 3.2.1)
+# GSD = D * (22.3/6000) / 24 m/px = D * 0.000155 m/px
+distances_m:
+  ROI1: 900
+  ROI2: 700
+  ROI3: 450
+  stable: 900
+
+inventory:
+  extensions: [.jpg, .jpeg]
+  target_hour: 13.0 # ~13:00 local time from EXIF
+  hour_window: 2.0 # allowable deviation from target_hour (hours)
+
+# The camera position changed at every data retrieval / snow burial, so the record is
+# split into groups that are processed independently to minimize errors. Boundaries
+# were determined from the scene shift of every image relative to stable region.
+# ROI rectangles # [x, y, w, h] (full-resolution pixels) are derieved from the legacy
+# MATLAB script.
+groups:
+  GRP1:
+    start: 2023-10-05
+    end: 2024-02-16
+    lake_rect: [1000, 2640, 1400, 480]
+    rois:
+      stable: {rect: [681, 3314, 654, 78], role: stable}
+      ROI1: {rect: [4515, 3014, 654, 78]}
+      ROI2: {rect: [3969, 3194, 588, 108]}
+      ROI3: {rect: [3165, 3512, 606, 84]}
+  GRP2:
+    start: 2024-05-16
+    end: 2024-08-18
+    lake_rect: [1780, 2737, 1400, 480]
+    rois:
+      stable: {rect: [1455, 3422, 414, 150], role: stable}
+      ROI1: {rect: [5284, 3160, 493, 101]}
+      ROI2: {rect: [4695, 3368, 642, 113]}
+      ROI3: {rect: [3843, 3642, 778, 115]}
+  GRP3:
+    start: 2024-08-19
+    end: 2025-02-24
+    lake_rect: [1780, 2640, 1400, 480]
+    rois:
+      stable: {rect: [1347, 3290, 416, 178], role: stable}
+      ROI1: {rect: [5289, 3065, 499, 124]}
+      ROI2: {rect: [4540, 3338, 576, 136]}
+      ROI3: {rect: [3547, 3540, 570, 130]}
+
+# Automatic image screening.
+# Manual lists override: exclude_images.txt, include_images.txt.
+quality:
+  static_fraction: 0.7          # top fraction of the frame used for the visibility check
+  neighbour_images: 2           # also match against +-N neighbouring days
+  thresholds:
+    min_visibility_inliers: 30
+    min_sharpness: 50           # variance of Laplacian on the 1/4-scale image
+    min_contrast: 15
+    min_brightness: 30
+    max_brightness: 235
+    max_clipped_frac: 0.3
+  exclude_list: exclude_images.txt
+  include_list: include_images.txt
+
+enhancement:
+  method: clahe
+  clip_limit_matlab: 0.01
+  n_bins: 256
+  tiles: [8, 8]
+
+tracking:
+  rois: [stable, ROI1, ROI2, ROI3]
+  pad_px: 40                    # margin around each ROI so tracked points can be seen leaving the ROI
+  min_vectors: 20               # a pair-ROI with fewer final vectors is invalid
+  sift: {contrast_threshold: 0.04, edge_threshold: 10, n_octave_layers: 3, sigma: 1.6, max_features: 0}
+  klt: {win_size: 31, pyramid_levels: 3, max_iterations: 30, epsilon: 0.01, max_bidirectional_error: 2.0}
+  ransac: {reproj_threshold_px: 2.0, max_trials: 5000, confidence: 0.99, min_points: 6}
+  direction_filter:
+    enabled: true
+    threshold_deg: 30           # keep vectors within +-30 deg of the median flow direction
+    apply_to_stable: false      # camera shake has no preferred direction
+
+pairs:
+  min_baseline_days: 0.5
+  max_baseline_days: null       # unlimited: full nC2 over each group.
+
+velocity:
+  min_vectors: 20
+  min_vectors_stable: 20
+  flow_sign_x: auto
+  flow_sign_min_days: 7
+
+aggregation:
+  mode: monthly
+  stat: median
+  min_days: 5
+  min_pairs: 20
+  annual_periods:
+    - {label: Oct2023-Oct2024, start: 2023-10-05, end: 2024-10-04}
+
+short_term:
+  quantity: horizontal_m_yr
+  max_baseline_days: 3.0
+  smoothing_window_days: 5
+  periods:
+    - {label: June2024, start: 2024-06-01, end: 2024-07-01}
+
+plots:
+  rois: [ROI1, ROI2, ROI3]
+  vector_overlays:
+    - {label: winter, start: 2023-12-01, end: 2024-01-31, vmax_m_month: 3.5, arrow_scale: 3, max_vectors: 300}
+    - {label: summer, start: 2024-06-20, end: 2024-07-31, vmax_m_month: 3.5, arrow_scale: 3, max_vectors: 300}
