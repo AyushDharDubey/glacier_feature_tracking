@@ -124,5 +124,12 @@ short_term:
 plots:
   rois: [ROI1, ROI2, ROI3]
   vector_overlays:
+  # Fig. 4: velocity fields over a single month, with all valid pairs in the month
+  # It picks the single valid pair in the window with the longest baseline and draws
+  # the actual tracked feature vectors from that pair.
     - {label: winter, start: 2023-12-01, end: 2024-01-31, vmax_m_month: 3.5, arrow_scale: 3, max_vectors: 300}
     - {label: summer, start: 2024-06-20, end: 2024-07-31, vmax_m_month: 3.5, arrow_scale: 3, max_vectors: 300}
+  # Fig. 5: composite velocity fields over any time window: all valid pairs in the window
+  # (baseline >= min_days) are binned on a grid_px grid and the median per cell is drawn.
+  vector_fields:
+    - {label: Jul2024, start: 2024-07-01, end: 2024-07-31, grid_px: 40, min_days: 5, min_count: 10, vmax_m_month: 3.5, arrow_scale: 3}
